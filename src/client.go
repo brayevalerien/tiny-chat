@@ -45,6 +45,6 @@ func receiveMessages(connection net.Conn) {
 			log.Println("Server disconnected:", err)
 			os.Exit(0)
 		}
-		fmt.Print("Received: ", message)
+		fmt.Print("\r\033[KReceived: " + message + "You: ")
 	}
 }
