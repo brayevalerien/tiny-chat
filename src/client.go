@@ -8,7 +8,20 @@ import (
 	"os"
 )
 
+func promptForUsername() string {
+	fmt.Print("Choose a username: ")
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Scan()
+	username := scanner.Text()
+	if username == "" {
+		log.Fatal("Username cannot be empty.")
+	}
+	return username
+}
+
 func main() {
+	username := promptForUsername()
+
 	log.Println("Connecting to chat server...")
 
 	port := ":8000"
@@ -19,6 +32,12 @@ func main() {
 	defer connection.Close()
 
 	log.Println("Connected to server!")
+
+	// server expects username as first message
+	_, err = fmt.Fprintf(connection, "%s\n", username) // server uses newline as delimiter
+	if err != nil {
+		log.Fatal("Failed to send username to server:", err)
+	}
 
 	go receiveMessages(connection)
 
@@ -45,6 +64,6 @@ func receiveMessages(connection net.Conn) {
 			log.Println("Server disconnected:", err)
 			os.Exit(0)
 		}
-		fmt.Print("\r\033[KReceived: " + message + "You: ")
+		fmt.Print("\r\033[K" + message + "You: ")
 	}
 }

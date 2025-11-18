@@ -5,14 +5,18 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 	"sync"
 )
 
-var clients []net.Conn      // stores connected clients
-var clientsMutex sync.Mutex // mutex on clients
+// maps net.Conn to the usernames
+var clients map[net.Conn]string
+var clientsMutex sync.Mutex
 
 func main() {
 	log.Println("Starting chat server...")
+
+	clients = make(map[net.Conn]string)
 
 	port := ":8000"
 	listener, err := net.Listen("tcp", port)
@@ -35,41 +39,55 @@ func main() {
 
 func handleNewClient(connection net.Conn) {
 	defer connection.Close()
+
+	reader := bufio.NewReader(connection)
+
+	username, err := reader.ReadString('\n')
+	if err != nil {
+		log.Println("Failed to read username:", err)
+		return
+	}
+	username = strings.TrimSpace(username)
 	clientsMutex.Lock()
-	clients = append(clients, connection)
+	clients[connection] = username
 	clientsMutex.Unlock()
 	defer removeClient(connection)
-	log.Println("New client connected. Current number of connections:", len(clients))
-	reader := bufio.NewReader(connection)
+
+	broadcastAll(username + " joined the chat\n")
+	log.Println("New client connected:", username, "- Current connections:", len(clients))
+
 	for {
 		message, err := reader.ReadString('\n')
 		if err != nil {
 			log.Println("Client disconnected:", err)
 			return
 		}
-		log.Println("Client message:", message)
-		broadcast(message, connection)
+
+		clientsMutex.Lock()
+		currentUsername := clients[connection]
+		clientsMutex.Unlock()
+		message = strings.TrimSpace(message)
+		formattedMessage := fmt.Sprintf("[%s] %s\n", currentUsername, message)
+
+		log.Println(formattedMessage)
+
+		broadcastAll(formattedMessage)
 	}
 }
 
-// sends a message to all clients other than sender
-func broadcast(message string, sender net.Conn) {
+func broadcastAll(message string) {
 	clientsMutex.Lock()
 	defer clientsMutex.Unlock()
-	for _, receiver := range clients {
-		if receiver != sender {
-			fmt.Fprint(receiver, message)
-		}
+	for client := range clients {
+		fmt.Fprint(client, message)
 	}
 }
 
 func removeClient(connection net.Conn) {
 	clientsMutex.Lock()
-	defer clientsMutex.Unlock()
-	for i, client := range clients {
-		if client == connection {
-			clients = append(clients[:i], clients[i+1:]...)
-			return
-		}
-	}
+	username := clients[connection]
+	delete(clients, connection)
+	clientsMutex.Unlock()
+
+	broadcastAll(username + " left the chat\n")
 }
